@@ -2,6 +2,7 @@ import csv
 import requests
 import math
 from abc import ABC, abstractmethod
+from requests.exceptions import RequestException, HTTPError, JSONDecodeError
 
 # Definir la clase Coordenada
 class Coordenada:
@@ -36,26 +37,19 @@ class ObtenerCoordenadasCSV(ObtenerCoordenadasInterface):
 # Implementación usando API
 class ObtenerCoordenadasAPI(ObtenerCoordenadasInterface):
     def obtener_coordenadas(self, ciudad):
-        response = requests.get(f'https://nominatim.openstreetmap.org/search?q={ciudad.nombre_ciudad},{ciudad.nombre_pais}&format=json')
-        data = response.json()
-        if data:
-            return Coordenada(float(data[0]['lat']), float(data[0]['lon']))
+        try:
+            response = requests.get(f'https://nominatim.openstreetmap.org/search?q={ciudad.nombre_ciudad},{ciudad.nombre_pais}&format=json')
+            response.raise_for_status()  # Lanzar una excepción si la respuesta no es exitosa
+            data = response.json()
+            if data:
+                return Coordenada(float(data[0]['lat']), float(data[0]['lon']))
+        except RequestException as e:
+            print(f"Error al obtener coordenadas: {e}")
+        except (IndexError, KeyError, ValueError, JSONDecodeError) as e:
+            print(f"Error en los datos de la API: {e}")
         return None
 
 # Implementación Mock
-class ObtenerCoordenadasMock(ObtenerCoordenadasInterface):
-    def obtener_coordenadas(self, ciudad):
-        # Coordenadas para "Mexico City" y "Tokyo" 
-        coordenadas_mock = {
-            "Mexico City, Mexico": Coordenada(19.4333, -99.1333),
-            "Tokyo, Japan": Coordenada(35.6897, 139.6922)
-        }
-        key = f"{ciudad.nombre_ciudad}, {ciudad.nombre_pais}"
-        if key in coordenadas_mock:
-            return coordenadas_mock[key]
-        print(f"No se encontraron coordenadas mock para {ciudad}")
-        return Coordenada(0.0, 0.0)  # Valores fijos
-
 
 def calcular_distancia(coord1, coord2):
     R = 6371  #radio de la Tierra en kilómetros
@@ -71,26 +65,71 @@ def calcular_distancia(coord1, coord2):
     distancia = R * c
     return distancia
 
+def ciudades_mas_cercanas(ciudad1, ciudad2, ciudad3):
+    # Obtener coordenadas de las ciudades usando CSV
+    obtener_coordenadas_csv = ObtenerCoordenadasCSV('worldcities.csv')
+    coord1_csv = obtener_coordenadas_csv.obtener_coordenadas(ciudad1)
+    coord2_csv = obtener_coordenadas_csv.obtener_coordenadas(ciudad2)
+    coord3_csv = obtener_coordenadas_csv.obtener_coordenadas(ciudad3)
+
+    # Obtener coordenadas de las ciudades usando API
+    obtener_coordenadas_api = ObtenerCoordenadasAPI()
+    coord1_api = obtener_coordenadas_api.obtener_coordenadas(ciudad1)
+    coord2_api = obtener_coordenadas_api.obtener_coordenadas(ciudad2)
+    coord3_api = obtener_coordenadas_api.obtener_coordenadas(ciudad3)
+
+    # Calcular distancias entre las ciudades
+    if coord1_csv and coord2_csv and coord3_csv:
+        distancia_csv = [
+            calcular_distancia(coord1_csv, coord2_csv),
+            calcular_distancia(coord1_csv, coord3_csv),
+            calcular_distancia(coord2_csv, coord3_csv)
+        ]
+    else:
+        print("No se pudieron obtener las coordenadas de una o varias ciudades desde el CSV.")
+        return None, None
+
+    if coord1_api and coord2_api and coord3_api:
+        distancia_api = [
+            calcular_distancia(coord1_api, coord2_api),
+            calcular_distancia(coord1_api, coord3_api),
+            calcular_distancia(coord2_api, coord3_api)
+        ]
+    else:
+        print("No se pudieron obtener las coordenadas de una o varias ciudades desde la API.")
+        return None, None
+
+    # Determinar cuáles dos ciudades están más cerca
+    min_dist_csv = min(distancia_csv)
+    min_dist_api = min(distancia_api)
+    if min_dist_csv <= min_dist_api:
+        if distancia_csv.index(min_dist_csv) == 0:
+            return ciudad1, ciudad2
+        elif distancia_csv.index(min_dist_csv) == 1:
+            return ciudad1, ciudad3
+        else:
+            return ciudad2, ciudad3
+    else:
+        if distancia_api.index(min_dist_api) == 0:
+            return ciudad1, ciudad2
+        elif distancia_api.index(min_dist_api) == 1:
+            return ciudad1, ciudad3
+        else:
+            return ciudad2, ciudad3
+
 def main():
     # Definir las ciudades
-    ciudad1 = Ciudad("Mexico", "Mexico City")
-    ciudad2 = Ciudad("Japan", "Tokyo")
+    ciudad1 = Ciudad("Peru", "Lima")
+    ciudad2 = Ciudad("Colombia", "Bogotá")
+    ciudad3 = Ciudad("Argentina", "Buenos Aires")
 
-    # Seleccionar la implementación de coordenadas
-    obtener_coordenadas = ObtenerCoordenadasCSV('worldcities.csv')
-    #obtener_coordenadas = ObtenerCoordenadasAPI()
-    #obtener_coordenadas = ObtenerCoordenadasMock() # Devuelva dos valores fijos
+    # Determinar las dos ciudades más cercanas
+    ciudad_cercana1, ciudad_cercana2 = ciudades_mas_cercanas(ciudad1, ciudad2, ciudad3)
 
-    # Obtener las coordenadas de ambas ciudades
-    coord1 = obtener_coordenadas.obtener_coordenadas(ciudad1)
-    coord2 = obtener_coordenadas.obtener_coordenadas(ciudad2)
-
-    if coord1 and coord2:
-        # Calcular la distancia
-        distancia = calcular_distancia(coord1, coord2)
-        print(f'La distancia entre {ciudad1.nombre_ciudad}, {ciudad1.nombre_pais} y {ciudad2.nombre_ciudad}, {ciudad2.nombre_pais} es {distancia:.2f} km')
+    if ciudad_cercana1 and ciudad_cercana2:
+        print(f"Las dos ciudades más cercanas son {ciudad_cercana1.nombre_ciudad}, {ciudad_cercana1.nombre_pais} y {ciudad_cercana2.nombre_ciudad}, {ciudad_cercana2.nombre_pais}")
     else:
-        print('No se pudieron obtener las coordenadas de una o ambas ciudades.')
+        print("No se pudieron determinar las dos ciudades más cercanas.")
 
-# Llamar a la función principal para pruebas
-main()
+if __name__ == "__main__":
+    main()
