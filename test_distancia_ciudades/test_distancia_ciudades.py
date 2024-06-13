@@ -1,5 +1,5 @@
 import unittest
-from script_original import Ciudad, ObtenerCoordenadasAPI, calcular_distancia
+from main import Ciudad, ObtenerCoordenadasAPI, calcular_distancia
 
 class PruebasDistanciaCiudades(unittest.TestCase):
 
